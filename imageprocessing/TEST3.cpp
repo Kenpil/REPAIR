@@ -14,7 +14,7 @@ using namespace std;
 #define Pi 3.1415
 
 Ptr<BackgroundSubtractor> pMOG; //MOG Background subtractor
-//コンパイル: g++ test.cpp -I/usr/local/include/opencv2 -I/usr/local/include/opencv -L/usr/lib -lopencv_core -lopencv_imgcodecs -lopencv_highgui -lopencv_imgproc -lopencv_bgsegm
+//コンパイル: g++ TEST3.cpp -I/usr/local/include/opencv2 -I/usr/local/include/opencv -L/usr/lib -lopencv_core -lopencv_imgcodecs -lopencv_highgui -lopencv_imgproc -lopencv_bgsegm
 
 double variancefunc(Mat &mat, int R, int K2, double *xu, double *yu)
 {
@@ -67,7 +67,7 @@ double ID2func(Mat &mat1, Mat &mat2, int Rn1, int Rn2, double variance, double x
     return -log(pow(2 * Pi, 0.5) * pow(pow(variance, 0.5), 2)) - xsubu / (2 * variance) + log(Rn1 * Rn2 / pow(Rn1 + Rn2, 2));
 }
 
-int xmeans2(Mat &mat, int *K, double xuparent = 0.0, double yuparent = 0.0)
+int xmeans2(Mat &mat, Mat &labels, int *K, double xuparent = 0.0, double yuparent = 0.0)
 {
     int Rn = mat.rows;
     int p = 2;
@@ -76,7 +76,6 @@ int xmeans2(Mat &mat, int *K, double xuparent = 0.0, double yuparent = 0.0)
     double IDparent = ID1func(mat, Rn, variance, xuparent, yuparent, q);
     double BICparent = IDparent - q * log(Rn);
     printf("BICparent = %lf\n", BICparent);
-    Mat labels;
     int attempts = 1;
     Mat centers(Rn, 1, mat.type());
     TermCriteria criteria{TermCriteria::COUNT, 1, 100};
@@ -141,8 +140,8 @@ int xmeans2(Mat &mat, int *K, double xuparent = 0.0, double yuparent = 0.0)
     {
         (*K)++;
         printf("K changed = %d\n", *K);
-        xmeans2(matchild1, K, xuchild1, yuchild1);
-        xmeans2(matchild2, K, xuchild2, yuchild2);
+        xmeans2(matchild1, labels, K, xuchild1, yuchild1);
+        xmeans2(matchild2, labels, K, xuchild2, yuchild2);
     }
     else
     {
@@ -174,9 +173,6 @@ int main(int argc, const char **argv)
     namedWindow("masked_hand", WINDOW_AUTOSIZE);
     imshow("masked_hand", fgMaskMOG);
 
-    //fgMaskMOG = wallimg;
-    //printf("rows = %d, cols = %d\n", fgMaskMOG.rows, fgMaskMOG.cols);
-    //printf("%d %d %d\n", fgMaskMOG.at<Vec3b>(0, 280)[0], fgMaskMOG.at<Vec3b>(0, 280)[1], fgMaskMOG.at<Vec3b>(0, 280)[2]);
     int whitepixel = 0;
     for (int y = 0; y < fgMaskMOG.rows; y++)
     {
@@ -189,7 +185,6 @@ int main(int argc, const char **argv)
         }
     }
     Mat samples(whitepixel, 2, CV_32F);
-    //Mat samples = fgMaskMOG;
     whitepixel = 0;
     for (int y = 0; y < fgMaskMOG.rows; y++)
     {
@@ -206,13 +201,41 @@ int main(int argc, const char **argv)
         }
     }
     printf("whitepixel = %d\n", whitepixel);
+    Mat labels;
     int K = 1;
-    K = xmeans2(samples, &K);
+    K = xmeans2(samples, labels, &K);
     printf("result K = %d\n", K);
     //std::cout << "size: " << centers.size() << endl;
     //std::cout << "centers: " << centers << endl;
     //std::cout << "labels: " << labels.size() << endl;
 
+    Mat new_image(wallimg.size(), wallimg.type());
+    int cluster_idx;
+    int number = 0;
+    int color = 1;
+    for (int y = 0; y < wallimg.rows; y++)
+    {
+        for (int x = 0; x < wallimg.cols; x++)
+        {
+            if (fgMaskMOG.at<unsigned char>(y, x) > 200)
+            {
+                cluster_idx = labels.at<int>(number, 0);
+                new_image.at<Vec3b>(y, x)[0] = (cluster_idx + 2) * 20; //centers.at<float>(cluster_idx, 0) * color;
+                new_image.at<Vec3b>(y, x)[1] = cluster_idx * 20;       //centers.at<float>(cluster_idx, 1) * color;
+                new_image.at<Vec3b>(y, x)[2] = (K - cluster_idx) * 20; //centers.at<float>(cluster_idx, 2) * color;
+                number++;
+            }
+            else
+            {
+                new_image.at<Vec3b>(y, x)[0] = fgMaskMOG.at<unsigned char>(y, x);
+                new_image.at<Vec3b>(y, x)[1] = fgMaskMOG.at<unsigned char>(y, x);
+                new_image.at<Vec3b>(y, x)[2] = fgMaskMOG.at<unsigned char>(y, x);
+            }
+        }
+    }
+
+    namedWindow("clustered_image", WINDOW_AUTOSIZE);
+    imshow("clustered_image", new_image);
     waitKey(0);
     destroyAllWindows();
 
